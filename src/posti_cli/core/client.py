@@ -65,6 +65,7 @@ class PostiClient:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "User-Agent": "posti-cli/1.0",
             "Authorization": self.api_key,
         }
 
