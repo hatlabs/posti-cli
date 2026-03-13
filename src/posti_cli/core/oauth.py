@@ -77,11 +77,11 @@ def make_oauth_token(
 
     if not client_id:
         raise PostiAPIError(
-            "POSTI_OAUTH_CLIENT_ID not set. Provide --oauth-client-id or set the env var."
+            "POSTI_OAUTH_CLIENT_ID not set. Set the environment variable."
         )
     if not client_secret:
         raise PostiAPIError(
-            "POSTI_OAUTH_CLIENT_SECRET not set. Provide --oauth-client-secret or set the env var."
+            "POSTI_OAUTH_CLIENT_SECRET not set. Set the environment variable."
         )
 
     return OAuthToken(client_id=client_id, client_secret=client_secret)

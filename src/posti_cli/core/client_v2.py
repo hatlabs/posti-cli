@@ -38,7 +38,7 @@ class PostiV2Client:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "posti-cli/2.0",
+            "User-Agent": "posti-cli/1.1",
             "Authorization": f"Bearer {self.oauth.access_token}",
         }
         if headers_extra:

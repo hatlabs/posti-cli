@@ -56,7 +56,7 @@ pass_ctx = click.make_pass_decorator(CliContext, ensure=True)
 
 
 def _output(ctx: CliContext, data) -> None:
-    """Print data as JSON."""
+    """Print data as JSON. Used by v2 commands that have no table format."""
     click.echo(json.dumps(data, indent=2, default=str))
 
 

@@ -103,3 +103,13 @@ class TestMakeV2Client:
             with patch("posti_cli.core.oauth.OAuthToken._fetch_token"):
                 client = make_v2_client(url="https://custom.example.com/")
                 assert client.url == "https://custom.example.com"
+
+    def test_url_from_env_var(self):
+        with patch.dict("os.environ", {
+            "POSTI_OAUTH_CLIENT_ID": "id",
+            "POSTI_OAUTH_CLIENT_SECRET": "secret",
+            "POSTI_V2_URL": "https://env.example.com/v2/",
+        }):
+            with patch("posti_cli.core.oauth.OAuthToken._fetch_token"):
+                client = make_v2_client()
+                assert client.url == "https://env.example.com/v2"
