@@ -7,7 +7,15 @@ from posti_cli.core.client import PostiClient
 
 
 def create_shipment(client: PostiClient, data: dict) -> list:
-    """Create a shipment (POST /v1/shipping/order?returnFile=true)."""
+    """Create a shipment (POST /v1/shipping/order?returnFile=true).
+
+    Defaults valuePerParcel to false in each parcel if not set,
+    since the API requires it but the default is almost always false.
+    """
+    shipment = data.get("shipment", {})
+    for parcel in shipment.get("parcels", []):
+        parcel.setdefault("valuePerParcel", False)
+
     return client._request(
         "/v1/shipping/order",
         method="POST",

@@ -36,15 +36,15 @@ posti-cli --json shipment create -d '{"pdfConfig": {...}, "shipment": {...}}'
 posti-cli --json shipment create -d @shipment.json --output-dir ./labels
 
 # Search pickup points (2025-04 API)
-posti-cli --json pickuppoints search -d '{"postcode": "00100", "country": "FI"}'
+posti-cli --json pickuppoints search -d '{"searchCriteria":{"location":{"postcode":"00100","countryCode":"FI"}}}'
 posti-cli --json pickuppoints list FI
-posti-cli --json pickuppoints get FI point-id
+posti-cli --json pickuppoints get FI 001003230
 
 # Estimate delivery time (2025-04 API)
-posti-cli --json estimate -d '{"originPostcode": "00100", "destinationPostcode": "20100"}'
+posti-cli --json estimate -d '{"estimate":{"time":"2026-03-14T10:00:00Z","origin":{"countryCode":"FI","postcode":"00100"},"destination":{"countryCode":"FI","postcode":"20100"},"product":{"code":"2103"}}}'
 
 # Labelless sending codes (2025-04 API)
-posti-cli --json labelless create -d '{"trackingNumber": "JJFI..."}'
+posti-cli --json labelless create -d '{"searchCriteria":{"trackingNumber":"JJFI..."}}'
 posti-cli --json labelless get JJFI...
 posti-cli --json labelless get-by-code CODE
 
