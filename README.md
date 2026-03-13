@@ -13,15 +13,14 @@ uv pip install -e .
 Set environment variables (or pass as CLI options):
 
 ```bash
-# v1 API (shipping labels)
-export POSTI_URL=https://gateway.posti.fi/shippingapi/api
-export POSTI_API_KEY=your-api-key
-export POSTI_CUSTOMER_NUMBER=your-customer-number
-
-# v2 API (2025-04: pickup points, estimates, labelless)
+# OAuth credentials (required for all API operations)
 export POSTI_OAUTH_CLIENT_ID=your-client-id
 export POSTI_OAUTH_CLIENT_SECRET=your-client-secret
-# Optional: override v2 base URL (default: https://gateway.posti.fi/2025-04)
+
+# Shipping API base URL (for shipment creation)
+export POSTI_URL=https://gateway.posti.fi/shippingapi/api
+
+# Optional: override 2025-04 API base URL (pickup points, estimates, labelless)
 # export POSTI_V2_URL=https://gateway.posti.fi/2025-04
 ```
 
@@ -31,8 +30,8 @@ export POSTI_OAUTH_CLIENT_SECRET=your-client-secret
 # List shipping methods (hardcoded, no API call)
 posti-cli --json methods list
 
-# Create a shipment with label PDFs
-posti-cli --json shipment create -d '{"pdfConfig": {...}, "shipment": {...}}'
+# Create a shipment with label PDFs (v2 API, OAuth auth)
+posti-cli --json shipment create -d '{"printConfig": {"target1Media": "thermo-225"}, "shipment": {"service": {"id": "PO2103"}, ...}}'
 posti-cli --json shipment create -d @shipment.json --output-dir ./labels
 
 # Search pickup points (2025-04 API)
@@ -52,4 +51,4 @@ posti-cli --json labelless get-by-code CODE
 posti-cli
 ```
 
-All commands support `--json` for machine-readable output. The v2 commands (pickuppoints, estimate, labelless) require OAuth credentials.
+All commands support `--json` for machine-readable output. All API commands require OAuth credentials (`POSTI_OAUTH_CLIENT_ID`/`POSTI_OAUTH_CLIENT_SECRET`). Shipment creation also requires `POSTI_URL`.

@@ -71,6 +71,21 @@ class TestPostiV2Client:
             with pytest.raises(PostiAPIError, match="Invalid token"):
                 client._request("/test")
 
+    def test_raises_on_errors_array_response(self):
+        """Shipping API returns {"errors": [...]} on failure."""
+        client = _make_client()
+
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "errors": [{"message": "Invalid service ID"}],
+        }).encode("utf-8")
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            with pytest.raises(PostiAPIError, match="Invalid service ID"):
+                client._request("/test")
+
     def test_extra_headers(self):
         client = _make_client()
 

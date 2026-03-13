@@ -5,10 +5,10 @@ import sys
 
 import click
 
-from posti_cli.core.client import PostiAPIError, make_client
+from posti_cli.core.client import PostiAPIError
 from posti_cli.core import methods, shipments
 from posti_cli.core import pickuppoints, estimate, labelless
-from posti_cli.core.client_v2 import make_v2_client
+from posti_cli.core.client_v2 import PostiV2Client, make_v2_client
 
 
 class CliContext:
@@ -18,29 +18,15 @@ class CliContext:
         self,
         json_output: bool,
         url: str | None,
-        api_key: str | None,
-        customer_number: str | None,
         oauth_client_id: str | None,
         oauth_client_secret: str | None,
     ):
         self.json_output = json_output
         self.url = url
-        self.api_key = api_key
-        self.customer_number = customer_number
         self.oauth_client_id = oauth_client_id
         self.oauth_client_secret = oauth_client_secret
-        self._client = None
         self._v2_client = None
-
-    @property
-    def client(self):
-        if self._client is None:
-            self._client = make_client(
-                url=self.url,
-                api_key=self.api_key,
-                customer_number=self.customer_number,
-            )
-        return self._client
+        self._shipping_v2_client = None
 
     @property
     def v2_client(self):
@@ -50,6 +36,21 @@ class CliContext:
                 oauth_client_secret=self.oauth_client_secret,
             )
         return self._v2_client
+
+    @property
+    def shipping_v2_client(self):
+        """V2 client for the shipping API (different base URL than 2025-04 API)."""
+        if self._shipping_v2_client is None:
+            if not self.url:
+                raise PostiAPIError(
+                    "POSTI_URL not set. Provide --url or set the env var."
+                )
+            # Reuse the same OAuth session — both APIs accept the same token scope
+            self._shipping_v2_client = PostiV2Client(
+                url=self.url.rstrip("/"),
+                oauth=self.v2_client.oauth,
+            )
+        return self._shipping_v2_client
 
 
 pass_ctx = click.make_pass_decorator(CliContext, ensure=True)
@@ -81,19 +82,15 @@ def _output_list(ctx: CliContext, data: list[dict], headers: list[str], row_fn) 
 
 @click.group(invoke_without_command=True)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON.")
-@click.option("--url", envvar="POSTI_URL", help="Posti API URL.")
-@click.option("--api-key", envvar="POSTI_API_KEY", help="Posti API key.")
-@click.option("--customer-number", envvar="POSTI_CUSTOMER_NUMBER", help="Posti customer number.")
-@click.option("--oauth-client-id", envvar="POSTI_OAUTH_CLIENT_ID", help="OAuth client ID for 2025-04 API.")
-@click.option("--oauth-client-secret", envvar="POSTI_OAUTH_CLIENT_SECRET", help="OAuth client secret for 2025-04 API.")
+@click.option("--url", envvar="POSTI_URL", help="Posti shipping API URL.")
+@click.option("--oauth-client-id", envvar="POSTI_OAUTH_CLIENT_ID", help="OAuth client ID.")
+@click.option("--oauth-client-secret", envvar="POSTI_OAUTH_CLIENT_SECRET", help="OAuth client secret.")
 @click.pass_context
-def cli(ctx, json_output, url, api_key, customer_number, oauth_client_id, oauth_client_secret):
-    """Posti CLI — command-line interface to Posti OmaPosti Pro API."""
+def cli(ctx, json_output, url, oauth_client_id, oauth_client_secret):
+    """Posti CLI — command-line interface to Posti API."""
     ctx.obj = CliContext(
         json_output=json_output,
         url=url,
-        api_key=api_key,
-        customer_number=customer_number,
         oauth_client_id=oauth_client_id,
         oauth_client_secret=oauth_client_secret,
     )
@@ -213,7 +210,7 @@ def shipment_cmd():
 def shipment_create(ctx, data, output_dir):
     """Create a shipment."""
     data = json.loads(data)
-    result = shipments.create_shipment(ctx.client, data)
+    result = shipments.create_shipment(ctx.shipping_v2_client, data)
 
     if output_dir and isinstance(result, list):
         saved = shipments.save_pdfs(result, output_dir)
