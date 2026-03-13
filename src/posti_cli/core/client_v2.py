@@ -54,10 +54,18 @@ class PostiV2Client:
         except urllib.error.URLError as e:
             raise PostiAPIError(f"Connection error: {e.reason}") from e
 
-        # Check for error response pattern
-        if isinstance(result, dict) and "errorCode" in result:
-            msg = result.get("message", result.get("errorCode", "Unknown error"))
-            raise PostiAPIError(f"API error: {msg}", status_code=200)
+        # Check for error response patterns
+        if isinstance(result, dict):
+            # 2025-04 API pattern: {"errorCode": ..., "message": ...}
+            if "errorCode" in result:
+                msg = result.get("message", result.get("errorCode", "Unknown error"))
+                raise PostiAPIError(f"API error: {msg}", status_code=200)
+            # Shipping API pattern: {"errors": [...]}
+            if "errors" in result:
+                raise PostiAPIError(
+                    f"API error: {json.dumps(result['errors'])}",
+                    status_code=200,
+                )
 
         return result
 
