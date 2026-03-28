@@ -101,6 +101,99 @@ class TestProAuthTokenExchange:
             auth._parse_token_response({"role_tokens": [{"token": "x"}]})
 
 
+class TestExtractFormField:
+    def test_extracts_when_name_before_value(self):
+        html = '<input type="hidden" name="code" value="abc123" />'
+        assert ProAuth._extract_form_field(html, "code") == "abc123"
+
+    def test_extracts_when_value_before_name(self):
+        html = '<input type="hidden" value="abc123" name="code" />'
+        assert ProAuth._extract_form_field(html, "code") == "abc123"
+
+    def test_returns_none_when_field_missing(self):
+        html = '<input type="hidden" name="other" value="abc123" />'
+        assert ProAuth._extract_form_field(html, "code") is None
+
+
+class TestAuthenticate:
+    def test_happy_path_sso_flow(self):
+        """Test the full 4-step SSO login flow with mocked HTTP responses."""
+        auth = ProAuth("user@test.fi", "pass123")
+
+        # Step 1: Login initiation redirects to SSO URL
+        sso_resp = _mock_response(
+            url="https://todentaminen.posti.fi/uas/authn/sess-123/view?_id=sess-123"
+        )
+        # Step 2+3: Credential submission returns success page with form
+        sso_form_html = (
+            '<form action="/callback">'
+            '<input type="hidden" name="code" value="sso-code-xyz" />'
+            '<input type="hidden" name="state" value="state-abc" />'
+            '</form>'
+        ).encode("utf-8")
+        submit_resp = _mock_response(
+            url="https://todentaminen.posti.fi/success",
+            body=sso_form_html,
+        )
+        # OIDC callback redirects with final code
+        callback_resp = _mock_response(
+            url="https://pro.posti.fi/?code=final-auth-code"
+        )
+        # Token exchange returns JWT tokens
+        token_data = json.dumps({
+            "id_token": "the-id-token",
+            "access_token": "the-access-token",
+            "refresh_token": "the-refresh-token",
+            "expires_in": 7200,
+            "role_tokens": [{
+                "type": "corporate",
+                "token": "the-role-token",
+            }],
+        }).encode("utf-8")
+        token_resp = _mock_response(body=token_data)
+
+        with patch("urllib.request.build_opener") as mock_builder:
+            mock_opener = MagicMock()
+            mock_builder.return_value = mock_opener
+            mock_opener.open.side_effect = [
+                sso_resp, submit_resp, callback_resp, token_resp,
+            ]
+
+            auth.authenticate()
+
+        assert auth._id_token == "the-id-token"
+        assert auth._role_token == "the-role-token"
+        assert auth._expires_at > time.time() + 7000
+
+    def test_happy_path_direct_code_in_redirect(self):
+        """Test flow where the credential submission redirects with code directly."""
+        auth = ProAuth("user@test.fi", "pass123")
+
+        sso_resp = _mock_response(
+            url="https://todentaminen.posti.fi/uas/authn/sess-123/view?_id=sess-123"
+        )
+        # Credential submission redirects directly with code (no form page)
+        submit_resp = _mock_response(
+            url="https://pro.posti.fi/?code=direct-code",
+            body=b"",
+        )
+        token_data = json.dumps({
+            "id_token": "id-tok",
+            "role_tokens": [{"token": "role-tok"}],
+        }).encode("utf-8")
+        token_resp = _mock_response(body=token_data)
+
+        with patch("urllib.request.build_opener") as mock_builder:
+            mock_opener = MagicMock()
+            mock_builder.return_value = mock_opener
+            mock_opener.open.side_effect = [sso_resp, submit_resp, token_resp]
+
+            auth.authenticate()
+
+        assert auth._id_token == "id-tok"
+        assert auth._role_token == "role-tok"
+
+
 class TestExtractSessionId:
     def test_extracts_from_path(self):
         url = "https://todentaminen.posti.fi/uas/authn/83446950-6ee1-472c-a2c6-c718a88bce14/view?_id=83446950-6ee1-472c-a2c6-c718a88bce14&entityID=5b05bc63"

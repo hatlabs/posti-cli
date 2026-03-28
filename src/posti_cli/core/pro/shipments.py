@@ -133,14 +133,19 @@ def list_shipments(
     }
 
     result = client.execute(SHIPMENT_FEED_QUERY, variables)
-    return result["data"]["getOPPROCorporateShipmentFeed"]
+    data = result.get("data") or {}
+    feed = data.get("getOPPROCorporateShipmentFeed")
+    if feed is None:
+        raise PostiAPIError("Unexpected response: no shipment feed data")
+    return feed
 
 
 def get_shipment(client: ProClient, tracking_id: str) -> dict:
     """Get full shipment detail including dimensions and tracking events."""
     variables = {"trackingId": tracking_id}
     result = client.execute(SHIPMENT_DETAIL_QUERY, variables)
-    items = result["data"]["getOPPROShipmentInfoV2"]
+    data = result.get("data") or {}
+    items = data.get("getOPPROShipmentInfoV2")
     if not items:
         raise PostiAPIError(f"No shipment found for tracking ID: {tracking_id}")
     return items[0]

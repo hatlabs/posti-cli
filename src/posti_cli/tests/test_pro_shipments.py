@@ -66,6 +66,14 @@ class TestListShipments:
         assert "STARRED" in variables["extra"]
 
 
+    def test_raises_on_null_data(self):
+        client = MagicMock()
+        client.execute.return_value = {"data": None}
+
+        with pytest.raises(PostiAPIError, match="no shipment feed data"):
+            list_shipments(client, first=10, offset=0)
+
+
 class TestGetShipment:
     def test_returns_shipment_detail(self):
         client = _mock_client({
@@ -98,6 +106,13 @@ class TestGetShipment:
 
         result = get_shipment(client, "FIRST")
         assert result["trackingNumbers"] == ["FIRST"]
+
+    def test_raises_on_null_data(self):
+        client = MagicMock()
+        client.execute.return_value = {"data": None}
+
+        with pytest.raises(PostiAPIError, match="No shipment found"):
+            get_shipment(client, "TRACK123")
 
     def test_raises_on_empty_result(self):
         client = _mock_client({

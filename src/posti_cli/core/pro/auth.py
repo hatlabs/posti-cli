@@ -7,6 +7,7 @@ used to call the graphql.posti.fi GraphQL API.
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -20,7 +21,7 @@ LOGIN_URL = "https://auth-service.posti.fi/api/v1/login"
 TOKEN_V2_URL = "https://auth-service.posti.fi/api/v1/token_v2"
 CLIENT_ID = "5b05bc63-9195-4687-9ac0-df872a6f936e"
 TOKEN_EXPIRY_BUFFER = 60
-TOKEN_TTL = 3600
+DEFAULT_TOKEN_TTL = 3600
 
 
 class ProAuth:
@@ -90,6 +91,7 @@ class ProAuth:
         try:
             resp = opener.open(submit_req, timeout=30)
             final_url = resp.url
+            resp_body = resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
             raise PostiAPIError(
                 f"SSO login failed (HTTP {e.code}). Check credentials."
@@ -97,12 +99,40 @@ class ProAuth:
         except urllib.error.URLError as e:
             raise PostiAPIError(f"SSO login failed: {e}") from e
 
-        # Extract auth code from final redirect URL
+        # The SSO success page contains a form with the auth code and state
+        # as hidden fields (auto-submitted by JavaScript in the browser).
+        # Extract the fields and submit to the OIDC callback ourselves.
         code = self._extract_code(final_url)
         if not code:
+            sso_code = self._extract_code_from_form(resp_body)
+            state = self._extract_form_field(resp_body, "state")
+            if not sso_code:
+                raise PostiAPIError(
+                    "SSO login succeeded but no auth code received. "
+                    "Check credentials or account status."
+                )
+
+            # Submit SSO form to OIDC callback (GET with query params)
+            callback_params = urllib.parse.urlencode({
+                "app_id": "oppro-prd",
+                "code": sso_code,
+                "state": state or "",
+            })
+            callback_url = (
+                f"https://auth-service.posti.fi/api/v1/oidc_callback"
+                f"?{callback_params}"
+            )
+            try:
+                resp = opener.open(callback_url, timeout=30)
+                code = self._extract_code(resp.url)
+            except urllib.error.URLError as e:
+                raise PostiAPIError(
+                    f"OIDC callback failed: {e}"
+                ) from e
+
+        if not code:
             raise PostiAPIError(
-                "SSO login succeeded but no auth code received. "
-                "Check credentials or account status."
+                "Auth flow completed but no final code received."
             )
 
         # Step 4: Exchange code for tokens
@@ -144,19 +174,26 @@ class ProAuth:
 
         self._id_token = id_token
         self._role_token = role_tokens[0]["token"]
-        self._expires_at = time.time() + TOKEN_TTL - TOKEN_EXPIRY_BUFFER
+        expires_in = data.get("expires_in", DEFAULT_TOKEN_TTL)
+        self._expires_at = time.time() + expires_in - TOKEN_EXPIRY_BUFFER
 
     @staticmethod
     def _extract_session_id(url: str) -> str | None:
-        """Extract SSO session ID from redirect URL path or query."""
+        """Extract SSO session ID from redirect URL query or path."""
         parsed = urlparse(url)
+        # Prefer _id query param (path may contain '*' placeholder)
+        qs = parse_qs(parsed.query)
+        ids = qs.get("_id", [])
+        if ids:
+            return ids[0]
+        # Fallback: extract from path /uas/authn/{session_id}/view
         parts = parsed.path.split("/")
         for i, part in enumerate(parts):
             if part == "authn" and i + 1 < len(parts):
-                return parts[i + 1]
-        qs = parse_qs(parsed.query)
-        ids = qs.get("_id", [])
-        return ids[0] if ids else None
+                sid = parts[i + 1]
+                if sid != "*":
+                    return sid
+        return None
 
     @staticmethod
     def _extract_code(url: str) -> str | None:
@@ -165,6 +202,27 @@ class ProAuth:
         qs = parse_qs(parsed.query)
         codes = qs.get("code", [])
         return codes[0] if codes else None
+
+    @staticmethod
+    def _extract_code_from_form(html: str) -> str | None:
+        """Extract authorization code from SSO success page form.
+
+        The SSO returns a success page with a hidden form that JavaScript
+        auto-submits. The code is in a hidden input field.
+        """
+        return ProAuth._extract_form_field(html, "code")
+
+    @staticmethod
+    def _extract_form_field(html: str, field_name: str) -> str | None:
+        """Extract a hidden form field value by name."""
+        tag_match = re.search(
+            rf'<input[^>]*name="{field_name}"[^>]*/?>',
+            html,
+        )
+        if not tag_match:
+            return None
+        value_match = re.search(r'value="([^"]+)"', tag_match.group(0))
+        return value_match.group(1) if value_match else None
 
 
 def make_pro_auth(
