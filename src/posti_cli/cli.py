@@ -7,7 +7,7 @@ import click
 
 from posti_cli.core.client import PostiAPIError
 from posti_cli.core import methods, shipments
-from posti_cli.core import pickuppoints, estimate, labelless
+from posti_cli.core import pickuppoints, estimate, labelless, tracking
 from posti_cli.core.client_v2 import PostiV2Client, make_v2_client
 from posti_cli.core.pro.auth import make_pro_auth
 from posti_cli.core.pro.client import ProClient
@@ -140,6 +140,7 @@ def _run_repl(ctx: CliContext) -> None:
         "labelless create -d JSON": "Create labelless sending code",
         "labelless get TRACKING_NUMBER": "Get sending code by tracking number",
         "labelless get-by-code CODE": "Get shipment by sending code",
+        "track TRACKING_NUMBER": "Track a public shipment (weight + dimensions)",
         "pro shipment list [--query TEXT]": "List shipments (Pro GraphQL)",
         "pro shipment get TRACKING_ID": "Get shipment detail with dimensions",
         "help": "Show this help",
@@ -337,6 +338,59 @@ def labelless_get_by_code(ctx, code):
     """Get shipment details by sending code."""
     result = labelless.get_by_sending_code(ctx.v2_client, code)
     _output(ctx, result)
+
+
+# ---------------------------------------------------------------------------
+# track (public consumer tracking, no auth)
+# ---------------------------------------------------------------------------
+
+
+@cli.command(name="track")
+@click.argument("tracking_number")
+@click.option("--locale", default="en", help="Event-text language (en, fi, sv).")
+@pass_ctx
+def track_cmd(ctx, tracking_number, locale):
+    """Track a public shipment by tracking number (measured weight + dimensions)."""
+    client = tracking.TrackingClient()
+    result = tracking.track_shipment(client, tracking_number, locale=locale)
+
+    if ctx.json_output:
+        _output(ctx, result)
+        return
+
+    status = result.get("status") or {}
+    main = status.get("main") or "?"
+    sub = ", ".join(status.get("subStatus") or [])
+    status_text = f"{main} / {sub}" if sub else main
+    stype = result.get("shipmentType") or ""
+    click.echo(f"\n  {result.get('displayId', tracking_number)}  [{status_text}]"
+               + (f"  ({stype})" if stype else ""))
+
+    m = result.get("measurements") or {}
+
+    def _val(field):
+        v = m.get(field) or {}
+        return v.get("value")
+
+    if any(_val(f) is not None for f in ("length", "width", "height")):
+        click.echo(f"  Dimensions: {_val('length')} x {_val('width')} x {_val('height')} cm")
+    if _val("weight") is not None:
+        click.echo(f"  Weight: {_val('weight')} kg")
+    if _val("volume") is not None:
+        click.echo(f"  Volume: {_val('volume')} m³")
+    if _val("packageQuantity") is not None:
+        click.echo(f"  Packages: {_val('packageQuantity')}")
+
+    events = result.get("events") or []
+    if events:
+        click.echo(f"\n  Recent events ({len(events)}):")
+        for ev in events[:6]:
+            ts = (ev.get("timestamp") or "")[:16].replace("T", " ")
+            desc = (ev.get("eventDescription") or "").strip()
+            city = ev.get("city") or ""
+            click.echo(f"    {ts}  {desc}" + (f"  ({city})" if city else ""))
+
+    click.echo()
 
 
 # ---------------------------------------------------------------------------

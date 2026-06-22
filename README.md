@@ -47,8 +47,14 @@ posti-cli --json labelless create -d '{"searchCriteria":{"trackingNumber":"JJFI.
 posti-cli --json labelless get JJFI...
 posti-cli --json labelless get-by-code CODE
 
+# Public shipment tracking — no auth, measured weight + dimensions
+posti-cli track LR288565359NL
+posti-cli --json track LR288565359NL
+
 # Interactive REPL
 posti-cli
 ```
 
-All commands support `--json` for machine-readable output. All API commands require OAuth credentials (`POSTI_OAUTH_CLIENT_ID`/`POSTI_OAUTH_CLIENT_SECRET`). Shipment creation also requires `POSTI_URL`.
+All commands support `--json` for machine-readable output. Most API commands require OAuth credentials (`POSTI_OAUTH_CLIENT_ID`/`POSTI_OAUTH_CLIENT_SECRET`); shipment creation also requires `POSTI_URL`.
+
+`track` is the exception: it uses the public consumer tracking GraphQL API with an anonymous token minted on demand, so it needs **no credentials**. It is the only source that returns measured weight/dimensions for *inbound* parcels (those never appear in the Pro corporate feed, which only lists shipments you send).
