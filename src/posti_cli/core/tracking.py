@@ -39,7 +39,6 @@ query SearchShipments(
     totalHits
     hits {
       displayId
-      displayName
       shipmentType
       status {
         main
@@ -176,7 +175,11 @@ def track_shipment(client: TrackingClient, tracking_number: str,
         "locale": locale,
     }
     result = client.execute(SEARCH_SHIPMENTS_QUERY, variables)
-    search = result["data"]["consumerSearchShipments"]
+    # Guard like core/pro/shipments.py: a valid GraphQL response can carry
+    # {"data": null} (resolver returned null without a top-level "errors"),
+    # which would otherwise raise a bare KeyError instead of a clean PostiAPIError.
+    data = result.get("data") or {}
+    search = data.get("consumerSearchShipments") or {}
     hits = search.get("hits") or []
     if not hits:
         raise PostiAPIError(f"No shipment found for tracking number: {tracking_number}")
